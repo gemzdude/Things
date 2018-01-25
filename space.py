@@ -44,8 +44,8 @@ class Xform:
     }
 
     decodes_context = {
-        "x01": "YOU'RE",
-        "x02": "YOU ARE"
+        "x01": "THAT YOU'RE",
+        "x02": "THAT YOU ARE "
     }
 
     @staticmethod
@@ -209,7 +209,7 @@ def new_description(intent, session, speech_text):
         q = 0
         session_state = "begin"
         speech_output = "Interesting, I guess I've learned something. " \
-            "Say READY to play again or CANCEL to end"
+            "Say READY to play again"
         reprompt_text = "Say READY to begin or CANCEL to end"
         should_end_session = False
         return build_response(session_attributes, build_speechlet_response(
@@ -240,7 +240,7 @@ def said_yes(intent, session):
         if session_state == "guess":
             speech_output = "I thought so! " \
                 "Say READY to play again or CANCEL to end"
-            reprompt_text = "Say READY to play again or CANCEL to end"
+            reprompt_text = "Say READY to play again"
             should_end_session = False
             return build_response(session_attributes, build_speechlet_response(
                 card_title, speech_output, reprompt_text, should_end_session))
@@ -271,7 +271,7 @@ def make_guess(intent, session):
     logger.info("Making guess")
     session_attributes = {}
     card_title = "Guessing"
-    speech_output = "I give up " + t2.getGuess()
+    speech_output = "I'll guess " + t2.getGuess()
     logger.info(speech_output)
     reprompt_text = "Please answer YES or NO"
     should_end_session = False
@@ -312,7 +312,7 @@ def get_welcome_response():
     card_title = "Welcome"
     speech_output = "Welcome to the Piedmont Things Alexa application. " \
                     "Think of yourself as a thing, " \
-                    "and I will try to guess what you are." \
+                    "and I will try to guess what you are. " \
                     "When you are ready to begin, say READY"
     # If the user either does not reply to the welcome message or says something
     # that is not understood, they will be prompted again with this text.
