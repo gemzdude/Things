@@ -1,5 +1,6 @@
 import re
 import logging
+from random import randint
 
 
 class Thing(object):
@@ -95,6 +96,7 @@ q = 0
 state = "begin"
 new_desc = ""
 guess_list = t2.get_nodes()
+end_pnt = len(guess_list)
 
 
 def lambda_handler(event, context):
@@ -131,15 +133,20 @@ def speaking_to_me(intent):
     return starting_over()
 
 
+def new_node(thing):
+    global guess_list, end_pnt
+    guess_list = thing.get_nodes()
+    end_pnt = len(guess_list)
+    
+    
 def first_words(intent):
     """ Initial utterance handled here.  Only READY valid here."""
-    global state, t, t2, q, guess_list
+    global state, t, t2, q, guess_list, end_pnt
     if intent['name'] == "ReadyIntent":
         state = "ask"
         t2 = t
-        guess_list = t2.get_nodes()
-        q = 0
-        return ask_question()
+        new_node(t2)
+        return next_question()
     session_attributes = {}
     card_title = "Guessing"
     speech_output = "say ready to begin or cancel to end"
@@ -149,7 +156,7 @@ def first_words(intent):
         card_title, speech_output, reprompt_text, should_end_session))
 
 
-def ask_question():
+def next_question():
     global t2, q, state
     state = "ask"
     session_attributes = {}
@@ -168,23 +175,22 @@ def ask_question():
 
 
 def get_guess():
-    global t2, q, guess_list
+    global t2, q, guess_list, end_pnt
     # txt = list(t2.things.keys())[q]
-    txt = guess_list[q]
+    end_pnt = end_pnt - 1
+    if end_pnt < 0:
+        raise IndexError('No more guesses')
+    q = randint(0, end_pnt)
+    txt = guess_list[q]  # should be random out of guess_list between 0 and end_pnt
+    guess_list[q] = guess_list[end_pnt]
     return txt
 
 
 def drill_down():
-    global t2, q, guess_list
+    global t2, q, guess_list, end_pnt
     key = guess_list[q]
     t2 = t2.things[key]
-    guess_list = t2.get_nodes()
-    q = 0
-
-
-def next_node():
-    global q
-    q = q + 1
+    new_node(t2)
 
 
 def handle_question_response(intent):
@@ -192,10 +198,9 @@ def handle_question_response(intent):
     global t2, q
     if intent['name'] == "AMAZON.YesIntent":
         drill_down()
-        return ask_question()
+        return next_question()
     if intent['name'] == "AMAZON.NoIntent":
-        next_node()
-        return ask_question()
+        return next_question()
     return yes_or_no_please()
 
 
