@@ -1,12 +1,5 @@
-import pickle
 import re
-import json
 import logging
-
-import sys
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 
 class Thing(object):
@@ -14,38 +7,48 @@ class Thing(object):
     def __init__(self, guess):
         self.guess = ""
         self.things = {}
-        self.guess = Xform.encode(guess.upper())
+        self.guess = guess.upper()
 
-    def getGuess(self):
-        return Xform.decode(self.guess)
+    def get_guess(self):
+        return Xform.guess_decode(self.guess)
+#        return Xform.guess_decode(self.guess)
 
-    def addThing(self, newQuestion, newThing):
-        newKey = Xform.encode(newQuestion.upper())
-        self.things[newKey] = newThing
+    def add_thing(self, new_question, new_thing):
+        # new_key = Xform.encode(new_question.upper())
+        self.things[new_question] = new_thing
         pass
 
 
 class Xform:
 
     encodes = {
-        "I'M ": "a01",
-        "I AM ": "a01",
-        "I ": "b01"
+        "I'M ": "A01",
+        "I AM ": "A01",
+        "I ": "B01"
     }
 
     decodes = {
-        "a01": "ARE YOU ",
-        "b01": "DO YOU "
+        "A01": "ARE YOU ",
+        "B01": "DO YOU "
+    }
+
+    guess_decodes = {
+        # "A01": "THAT YOU ARE ",
+        # "B01": "THAT YOU ARE "
+        "A01": "ARE YOU ",
+        "B01": "ARE YOU "
     }
 
     encodes_context = {
-        "I'M": "x01",
-        "I AM": "x02"
+        "I'M": "X01",
+        "I AM": "X02",
+        " I ": "X03"
     }
 
     decodes_context = {
-        "x01": "YOU'RE",
-        "x02": "YOU ARE"
+        "X01": "YOU'RE",
+        "X02": "YOU ARE",
+        "X03": " YOU "
     }
 
     @staticmethod
@@ -57,286 +60,314 @@ class Xform:
 
     @staticmethod
     def encode(txt):
-        etxt = Xform.xform(txt, Xform.encodes)
+        encode_txt = Xform.xform(txt, Xform.encodes)
         for eFrom, eTo in Xform.encodes_context.items():
-            etxt = etxt.replace(eFrom, eTo)
-        etxt.replace(" ", "_")
-        return etxt
+            encode_txt = encode_txt.replace(eFrom, eTo)
+        encode_txt.replace(" ", "_")
+        return encode_txt
 
     @staticmethod
     def decode(txt):
-        dtxt = Xform.xform(txt, Xform.decodes)
+        decode_txt = Xform.xform(txt, Xform.decodes)
         for dFrom, dTo in Xform.decodes_context.items():
-            dtxt = dtxt.replace(dFrom, dTo)
-        dtxt.replace("_", " ")
-        return dtxt
+            decode_txt = decode_txt.replace(dFrom, dTo)
+        decode_txt.replace("_", " ")
+        return decode_txt
+
+    @staticmethod
+    def guess_decode(txt):
+        decode_txt = Xform.xform(txt, Xform.guess_decodes)
+        for dFrom, dTo in Xform.decodes_context.items():
+            decode_txt = decode_txt.replace(dFrom, dTo)
+        decode_txt.replace("_", " ")
+        return decode_txt
 
 
-t = Thing("I am Brian")
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+t = Thing(Xform.encode("I'M THE CASH REGISTER"))
 t2 = t
 q = 0
-session_state = "begin"
+state = "begin"
 new_desc = ""
-new_guess = ""
-speech_prefix = ""
-
-
-def newThing(here):
-    newQuestion = input("TELL ME SOMETHING ABOUT YOURSELF: ").upper()
-    newGuess = input("OK, WHAT ARE YOU?: ").upper()
-
-    newThing = Thing(newGuess)
-    here.addThing(newQuestion, newThing)
-
-
-def investigate(here):
-    for question, thing in here.things.items():
-        if yes_or_no(Xform.decode(question)):
-            investigate(thing)
-            return
-    print("I GIVE UP...")
-    if yes_or_no(here.getGuess()):
-        print("I THOUGHT SO!")
-    else:
-        newThing(here)
-
-
-def yes_or_no(question):
-    while "the answer is invalid":
-        reply = str(input(question+'? (Y/N): ')).lower().strip().upper()
-        if not reply:
-            continue
-        if reply[0] == 'Y':
-            return True
-        if reply[0] == 'N':
-            return False
 
 
 def lambda_handler(event, context):
-#    print("event.session.application.applicationId=" +
-#          event['session']['application']['applicationId'])
-#    logger.info("SAJ event: " + json.dumps(event))
-    """
-    Uncomment this if statement and populate with your skill's application ID to
-    prevent someone else from configuring a skill that sends requests to this
-    function.
-    """
-#    if (event['session']['application']['applicationId'] !=
-#            "amzn1.echo-sdk-ams.app.[ amzn1.ask.skill.1c056782-3d7b-4610-bfc1-4aa89d86a266]"):
-#        raise ValueError("Invalid Application ID")
-
-    if event['session']['new']:
-        on_session_started({'requestId': event['request']['requestId']},
-                           event['session'])
-
+    if event['request']['type'] == "IntentRequest":
+        return speaking_to_me(event['request']['intent'])
     if event['request']['type'] == "LaunchRequest":
-        return on_launch(event['request'], event['session'])
-    elif event['request']['type'] == "IntentRequest":
-        return on_intent(event['request'], event['session'])
-    elif event['request']['type'] == "SessionEndedRequest":
-        return on_session_ended(event['request'], event['session'])
+        return just_launched()
+    if event['request']['type'] == "SessionEndedRequest":
+        return session_ended()
 
 
-def on_intent(intent_request, session):
-    intent = intent_request['intent']
-    intent_name = intent_request['intent']['name']
+def speaking_to_me(intent):
+    # these are handled the same no matter the state
+    global state
+    if intent['name'] == "AMAZON.CancelIntent" or intent['name'] == "AMAZON.StopIntent":
+        return end_game()
+    if intent['name'] == "AMAZON.HelpIntent":
+        return say_help()
 
-    # Dispatch to your skill's intent handlers
-    if intent_name == "ReadyIntent":
-        return said_ready(intent, session)
-    elif intent_name == "DescribePersonIntent":
-        return described_person(intent, session, "a01")
-    elif intent_name == "DescribeThingIntent":
-        return described_thing(intent, session, "b01")
-    elif intent_name == "AMAZON.YesIntent":
-        return said_yes(intent, session)
-    elif intent_name == "AMAZON.NoIntent":
-        return said_no(intent, session)
-    elif intent_name == "AMAZON.HelpIntent":
-        return get_welcome_response()
-    elif intent_name == "AMAZON.CancelIntent" or intent_name == "AMAZON.StopIntent":
-        return said_cancel()
-    else:
-        raise ValueError("Invalid intent")
+    # handle what was said depending on where we are in the game
+    logger.info("entering with state: " + state)
+    if state == "begin":
+        return first_words(intent)
+    if state == "ask":
+        return handle_question_response(intent)
+    if state == "more":
+        return handle_describe_response(intent)
+    if state == "what":
+        return handle_reveal_response(intent)
+    if state == "guess":
+        return handle_guess_response(intent)
+
+    # we are hopelessly lost, better just start over!
+    return starting_over()
 
 
-def said_ready(intent, session):
-    global t, t2, q, session_state, speech_prefix
-    logger.info("Hit ready entry point: " + session_state)
-    if session_state == "begin":
+def first_words(intent):
+    """ Initial utterance handled here.  Only READY valid here."""
+    global state, t, t2, q
+    if intent['name'] == "ReadyIntent":
+        state = "ask"
         t2 = t
         q = 0
-        session_state = "ask"
-        return ask_question(intent, session)
-    else:
-        session_state = "begin"
-        t2 = t
-        q = 0
-        speech_prefix = "OK, let's begin again."
-        return ask_question(intent, session)
-
-
-def described_person(intent, session, thing_type):
-    speech_text = thing_type + intent['slots']['PersonDescription']['value'].upper()
-    logger.info("description: " + speech_text)
-    return new_description(intent, session, speech_text)
-
-
-def described_thing(intent, session, thing_type):
-    speech_text = thing_type + intent['slots']['ThingDescription']['value'].upper()
-    logger.info("description: " + speech_text)
-    return new_description(intent, session, speech_text)
-
-
-def new_description(intent, session, speech_text):
-    global t2, q, session_state, new_desc, new_guess
+        return ask_question()
     session_attributes = {}
-    card_title = "Describe"
-    if session_state == "more":
-        logger.info("new desc: " + speech_text)
-        new_desc = speech_text
-        session_state = "what"
-        speech_output = "OK, so tell me, what are you"
-        reprompt_text = "Please tell what you are"
-        should_end_session = False
-        return build_response(session_attributes, build_speechlet_response(
-            card_title, speech_output, reprompt_text, should_end_session))
-    elif session_state == "what":
-        new_guess = speech_text
-        logger.info("creating new thing: q: " + str(q) + "new: " + new_guess)
-        new_thing = Thing(new_guess)
-        t2.things[new_desc] = new_thing
-        q = 0
-        session_state = "begin"
-        speech_output = "Interesting, I guess I've learned something. " \
-            "Say READY to play again or CANCEL to end"
-        reprompt_text = "Say READY to begin or CANCEL to end"
-        should_end_session = False
-        return build_response(session_attributes, build_speechlet_response(
-            card_title, speech_output, reprompt_text, should_end_session))
-
-    speech_output = "Please reply YES or NO"
-    reprompt_text = "You can say CANCEL any time to quit playing"
+    card_title = "Guessing"
+    speech_output = "say ready to begin or cancel to end"
+    reprompt_text = "Please answer YES or NO"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session))
 
+    # session_attributes = {}
+    # card_title = "Guessing"
+    # txt = encode_description(intent)
+    # txt2 = Xform.decode(txt)
+    # speech_output = txt + '\n' + txt2
+    # reprompt_text = "Please answer YES or NO"
+    # should_end_session = False
+    # return build_response(session_attributes, build_speechlet_response(
+    #     card_title, speech_output, reprompt_text, should_end_session))
 
-def said_yes(intent, session):
-    global t2, q, session_state
+
+def ask_question():
+    global t2, q, state
+    state = "ask"
     session_attributes = {}
-    card_title = "Warmer"
-    if session_state == "ask":
-        try:
-            key = list(t2.things)[q]
-            t2 = t2.things[key]
-            q = 0
-            return ask_question(intent, session)
-        except:
-            session_state = "guess"
-            return make_guess(intent, session)
-
-    else:
-        if session_state == "guess":
-            speech_output = "I thought so! " \
-                "Say READY to play again or CANCEL to end"
-            reprompt_text = "Say READY to play again or CANCEL to end"
-            should_end_session = False
-            return build_response(session_attributes, build_speechlet_response(
-                card_title, speech_output, reprompt_text, should_end_session))
-
-
-def ask_question(intent, session):
-    global t2, q, session_state
-    session_attributes = {}
-    card_title = "Guessing"
+    card_title = "Asking"
     try:
-        logger.info("trying to find next thing " + str(q) + list(t2.things.keys())[q])
+        logger.info("trying to find next thing " + list(t2.things.keys())[q])
+        logger.info("asking: " + Xform.decode(list(t2.things.keys())[q]))
         speech_output = Xform.decode(list(t2.things.keys())[q])
         reprompt_text = "Please answer YES or NO"
         should_end_session = False
         return build_response(session_attributes, build_speechlet_response(
             card_title, speech_output, reprompt_text, should_end_session))
     except IndexError:
-        session_state = "guess"
-        return make_guess(intent, session)
-    except:
-        logger.info(sys.exc_info()[0])
-        logger.info(sys.exc_info()[1])
-        logger.info(sys.exc_info()[2])
+        return make_guess()
 
 
-def make_guess(intent, session):
-    global t2, q, session_state
-    logger.info("Making guess")
+def handle_question_response(intent):
+    """ They have replied to a question.  Should be YES or NO."""
+    global t2, q
+    if intent['name'] == "AMAZON.YesIntent":
+        key = list(t2.things)[q]
+        t2 = t2.things[key]
+        q = 0
+        return ask_question()
+    if intent['name'] == "AMAZON.NoIntent":
+        q = q + 1
+        return ask_question()
+    return yes_or_no_please()
+
+
+def make_guess():
+    global t2, state
+    logger.info("Making guess " + t2.guess)
+    state = "guess"
     session_attributes = {}
     card_title = "Guessing"
-    speech_output = "I give up " + t2.getGuess()
+    speech_output = "I give up, " + t2.get_guess()
     logger.info(speech_output)
     reprompt_text = "Please answer YES or NO"
-    should_end_session = False
-    dict = build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
-    return dict
-
-
-def said_no(intent, session):
-    global t2, q, session_state
-    session_attributes = {}
-    card_title = "Colder"
-    if session_state == "ask":
-        q = q+1
-        return ask_question()
-    elif session_state == "guess":
-        session_state = "more"
-        speech_output = "To help me learn please tell me something about yourself."
-        reprompt_text = "Please tell me something about yourself."
-        should_end_session = False
-        return build_response(session_attributes, build_speechlet_response(
-            card_title, speech_output, reprompt_text, should_end_session))
-    # elif session_state == "more":
-    #     session_state = "what"
-    #     speech_output = "OK, so tell me, what are you."
-    #     reprompt_text = "Please tell me what you are."
-    #     should_end_session = False
-    #     return build_response(session_attributes, build_speechlet_response(
-    #         card_title, speech_output, reprompt_text, should_end_session))
-
-
-# --------------- Functions that control the skill's behavior ------------------
-
-
-def get_welcome_response():
-
-    session_attributes = {}
-    card_title = "Welcome"
-    speech_output = "Welcome to the Piedmont Things Alexa application. " \
-                    "Think of yourself as a thing, " \
-                    "and I will try to guess what you are." \
-                    "When you are ready to begin, say READY"
-    # If the user either does not reply to the welcome message or says something
-    # that is not understood, they will be prompted again with this text.
-    reprompt_text = "Say READY to begin or CANCEL to end"
-
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session))
 
 
-def said_cancel():
-    card_title = "Session Ended"
+def handle_describe_response(intent):
+    """ I've asked them to tell me something about themselves."""
+    if intent['name'] == "DescribePersonIntent":
+        return described_thing(intent)
+    if intent['name'] == "DescribeThingIntent":
+        return described_thing(intent)
+
+
+def described_thing(intent):
+    global state, new_desc
+    session_attributes = {}
+    card_title = "Describe"
+    new_desc = encode_description(intent)
+    logger.info("description: " + new_desc)
+    state = "what"
+    speech_output = "OK, so tell me what you are"
+    reprompt_text = "Please tell what you are"
+    should_end_session = False
+    return build_response(session_attributes, build_speechlet_response(
+        card_title, speech_output, reprompt_text, should_end_session))
+
+
+def encode_description(intent):
+    if intent['name'] == "DescribePersonIntent":
+        return person_description(intent)
+    if intent['name'] == "DescribeThingIntent":
+        return thing_description(intent)
+    return "B01" + "unknown thing"
+
+
+def person_description(intent):
+    txt = "I AM " + intent['slots']['PersonDescription']['value'].upper()
+    txt = Xform.encode(txt)
+    return txt
+
+
+def thing_description(intent):
+    txt = "I " + intent['slots']['ThingDescription']['value'].upper()
+    txt = Xform.encode(txt)
+    return txt
+
+
+def handle_reveal_response(intent):
+    """ I've asked the to tell me what they are."""
+    global t2, q, state, new_desc
+    session_attributes = {}
+    card_title = "Reveal"
+    new_guess = encode_description(intent)
+    logger.info("creating new thing: q: " + str(q) + " newg: " + new_guess + " newd: " + new_desc)
+    new_thing = Thing(new_guess)
+    t2.things[new_desc] = new_thing
+    state = "begin"
+    speech_output = "Interesting, I guess I've learned something. " \
+                    "Say READY to play again"
+    reprompt_text = "Say READY to begin or CANCEL to end"
+    should_end_session = False
+    return build_response(session_attributes, build_speechlet_response(
+        card_title, speech_output, reprompt_text, should_end_session))
+
+    pass
+
+
+def handle_guess_response(intent):
+    """ I've made a guess at what they are.  Should be YES or NO."""
+    if intent['name'] == "AMAZON.YesIntent":
+        return i_thought_so()
+    if intent['name'] == "AMAZON.NoIntent":
+        return tell_me_more()
+    return yes_or_no_please()
+
+
+def starting_over():
+    """ Somehow we've lost track of the game state.  Bail out and start over."""
+    pass
+
+
+def tell_me_more():
+    global state
+    session_attributes = {}
+    card_title = "Tell me more"
+    state = "more"
+    speech_output = "To help me learn, please tell me something about yourself."
+    reprompt_text = "Please tell me something about yourself."
+    should_end_session = False
+    return build_response(session_attributes, build_speechlet_response(
+        card_title, speech_output, reprompt_text, should_end_session))
+
+
+def end_game():
+    """ Ending game.  Say Good-bye"""
+    global t, t2, q, state, new_desc
+    card_title = "Good-bye!"
     speech_output = "Thank you for playing Piedmont Things. " \
                     "Have a nice day! "
+    t = Thing(Xform.encode("I'M THE CASH REGISTER"))
+    t2 = t
+    q = 0
+    state = "begin"
+    new_desc = ""
     # Setting this to true ends the session and exits the skill.
     should_end_session = True
     return build_response({}, build_speechlet_response(
         card_title, speech_output, None, should_end_session))
 
 
+def say_help():
+    """ They've requested help.  Give it to them"""
+    session_attributes = {}
+    card_title = "Help"
+    speech_output = "I will try to guess what you are by asking" \
+                    " you a series or yes or no questions." \
+                    " When I have run out of questions, I will make a guess" \
+                    " at what you are,  If I am wrong, I will ask you to tell" \
+                    " me something about yourself, so I can learn"
+    reprompt_text = "Say READY to begin or CANCEL to end"
+    should_end_session = False
+
+    return build_response(session_attributes, build_speechlet_response(
+        card_title, speech_output, reprompt_text, should_end_session))
+
+
+def i_thought_so():
+    global state
+    session_attributes = {}
+    card_title = "Got it!"
+    speech_output = "I thought so!  Pretty smart don't you think? " \
+                    "Say READY to play again"
+    reprompt_text = "Say READY to play again or CANCEL to end"
+    state = "begin"
+    should_end_session = False
+    return build_response(session_attributes, build_speechlet_response(
+        card_title, speech_output, reprompt_text, should_end_session))
+
+
+def yes_or_no_please():
+    session_attributes = {}
+    card_title = "Yes or No"
+    speech_output = "Please answer YES or NO"
+    reprompt_text = "Please answer YES or NO"
+    should_end_session = False
+    return build_response(session_attributes, build_speechlet_response(
+        card_title, speech_output, reprompt_text, should_end_session))
+
+
+def just_launched():
+    """ Launched app without utterance """
+    global state
+    state = "begin"
+
+    session_attributes = {}
+    card_title = "Welcome"
+    speech_output = "Welcome to the Piedmont Things Alexa application. " \
+                    "Think of yourself as a thing, " \
+                    "and I will try to guess WHAT you are. " \
+                    "When you are ready to begin, say READY"
+    # speech_output = "Hello, say READY to begin"
+    reprompt_text = "Say READY to begin or CANCEL to end"
+    should_end_session = False
+
+    return build_response(session_attributes, build_speechlet_response(
+        card_title, speech_output, reprompt_text, should_end_session))
+
+
+def session_ended():
+    pass
+
+
 def build_speechlet_response(title, output, reprompt_text, should_end_session):
-    global speech_prefix
-    the_output = speech_prefix + output
-    speech_prefix = ""
+
     return {
         'outputSpeech': {
             'type': 'PlainText',
@@ -358,46 +389,10 @@ def build_speechlet_response(title, output, reprompt_text, should_end_session):
 
 
 def build_response(session_attributes, speechlet_response):
-    dict = {
+    response = {
         'version': '1.0',
         'sessionAttributes': session_attributes,
         'response': speechlet_response
     }
 
-    return dict
-
-
-def on_session_started(session_started_request, session):
-    pass
-
-
-def on_launch(launch_request, session):
-    return get_welcome_response()
-
-
-def on_session_ended(session_ended_request, session):
-    pass
-
-
-#t = Thing("I am Brian")
-#t1 = Thing("t1")
-#t.addThing("q1", t1)
-#t2 = Thing("t2")
-#t.addThing("q2", t2)
-#print(t.things[0])
-#x = pickle.dumps(t)
-#print(type(x))
-#t2 = pickle.loads(x)
-#print(t2==t)
-#print(t2 is t)
-#while True:
-#    investigate(t)
-#    if not yes_or_no("Play again"):
-#        break
-
-#s = json.dumps(t)
-#print(s)
-
-#exit()
-
-
+    return response
