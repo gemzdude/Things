@@ -1,14 +1,27 @@
-dict = {"key1": "val1",
-        "key2": "val2"}
-class a:
-    text = "old text"
+from random import randint
+
+d = { "1": "one", "2":"two","3":"three"}
+g = list(d.keys())
+endpnt = len(d)
 
 
-xa = a()
-xb = xa
-print(xa.text)
-print(xb.text)
+def get_guess():
+    global g, endpnt
+    which = randint(0, endpnt-1)
+    txt = g[which]
+    g[which] = g[endpnt-1]
+    endpnt = endpnt - 1
+    return txt
 
-xa.text = "new text"
-print(xb.text)
+
+while True:
+    print(g)
+    x = input("hit enter or q...")
+    if x == "q":
+        break
+    print(get_guess())
+    if endpnt == 0:
+        print("that's all")
+        break
+
 

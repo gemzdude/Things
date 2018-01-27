@@ -18,6 +18,9 @@ class Thing(object):
         self.things[new_question] = new_thing
         pass
 
+    def get_nodes(self):
+        return list(self.things)
+
 
 class Xform:
 
@@ -91,6 +94,7 @@ t2 = t
 q = 0
 state = "begin"
 new_desc = ""
+guess_list = t2.get_nodes()
 
 
 def lambda_handler(event, context):
@@ -129,10 +133,11 @@ def speaking_to_me(intent):
 
 def first_words(intent):
     """ Initial utterance handled here.  Only READY valid here."""
-    global state, t, t2, q
+    global state, t, t2, q, guess_list
     if intent['name'] == "ReadyIntent":
         state = "ask"
         t2 = t
+        guess_list = t2.get_nodes()
         q = 0
         return ask_question()
     session_attributes = {}
@@ -143,16 +148,6 @@ def first_words(intent):
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session))
 
-    # session_attributes = {}
-    # card_title = "Guessing"
-    # txt = encode_description(intent)
-    # txt2 = Xform.decode(txt)
-    # speech_output = txt + '\n' + txt2
-    # reprompt_text = "Please answer YES or NO"
-    # should_end_session = False
-    # return build_response(session_attributes, build_speechlet_response(
-    #     card_title, speech_output, reprompt_text, should_end_session))
-
 
 def ask_question():
     global t2, q, state
@@ -160,9 +155,10 @@ def ask_question():
     session_attributes = {}
     card_title = "Asking"
     try:
-        logger.info("trying to find next thing " + list(t2.things.keys())[q])
-        logger.info("asking: " + Xform.decode(list(t2.things.keys())[q]))
-        speech_output = Xform.decode(list(t2.things.keys())[q])
+        guess_text = get_guess()
+        logger.info("trying to find next thing " + guess_text)
+        logger.info("asking: " + Xform.decode(guess_text))
+        speech_output = Xform.decode(guess_text)
         reprompt_text = "Please answer YES or NO"
         should_end_session = False
         return build_response(session_attributes, build_speechlet_response(
@@ -171,16 +167,34 @@ def ask_question():
         return make_guess()
 
 
+def get_guess():
+    global t2, q, guess_list
+    # txt = list(t2.things.keys())[q]
+    txt = guess_list[q]
+    return txt
+
+
+def drill_down():
+    global t2, q, guess_list
+    key = guess_list[q]
+    t2 = t2.things[key]
+    guess_list = t2.get_nodes()
+    q = 0
+
+
+def next_node():
+    global q
+    q = q + 1
+
+
 def handle_question_response(intent):
     """ They have replied to a question.  Should be YES or NO."""
     global t2, q
     if intent['name'] == "AMAZON.YesIntent":
-        key = list(t2.things)[q]
-        t2 = t2.things[key]
-        q = 0
+        drill_down()
         return ask_question()
     if intent['name'] == "AMAZON.NoIntent":
-        q = q + 1
+        next_node()
         return ask_question()
     return yes_or_no_please()
 
@@ -258,8 +272,6 @@ def handle_reveal_response(intent):
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session))
 
-    pass
-
 
 def handle_guess_response(intent):
     """ I've made a guess at what they are.  Should be YES or NO."""
@@ -309,7 +321,7 @@ def say_help():
     session_attributes = {}
     card_title = "Help"
     speech_output = "I will try to guess what you are by asking" \
-                    " you a series or yes or no questions." \
+                    " you a series of yes or no questions." \
                     " When I have run out of questions, I will make a guess" \
                     " at what you are,  If I am wrong, I will ask you to tell" \
                     " me something about yourself, so I can learn"
