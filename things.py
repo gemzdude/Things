@@ -97,6 +97,7 @@ state = "begin"
 new_desc = ""
 guess_list = t2.get_nodes()
 end_pnt = len(guess_list)
+reprompt_text = "SAY READY TO BEGIN OR CANCEL TO END"
 
 
 def lambda_handler(event, context):
@@ -122,7 +123,7 @@ def speaking_to_me(intent):
         return first_words(intent)
     if state == "ask":
         return handle_question_response(intent)
-    if state == "more":
+    if state == "about":
         return handle_describe_response(intent)
     if state == "what":
         return handle_reveal_response(intent)
@@ -141,7 +142,7 @@ def new_node(thing):
     
 def first_words(intent):
     """ Initial utterance handled here.  Only READY valid here."""
-    global state, t, t2, q, guess_list, end_pnt
+    global state, t, t2, q, guess_list, end_pnt, reprompt_text
     if intent['name'] == "ReadyIntent":
         state = "ask"
         t2 = t
@@ -150,14 +151,14 @@ def first_words(intent):
     session_attributes = {}
     card_title = "Guessing"
     speech_output = "say ready to begin or cancel to end"
-    reprompt_text = "Please answer YES or NO"
+    # reprompt_text = "Please answer YES or NO"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session))
 
 
 def next_question():
-    global t2, q, state
+    global t2, q, state, reprompt_text
     state = "ask"
     session_attributes = {}
     card_title = "Asking"
@@ -166,7 +167,7 @@ def next_question():
         logger.info("trying to find next thing " + guess_text)
         logger.info("asking: " + Xform.decode(guess_text))
         speech_output = Xform.decode(guess_text)
-        reprompt_text = "Please answer YES or NO"
+        reprompt_text = "Please answer YES or NO, " + speech_output
         should_end_session = False
         return build_response(session_attributes, build_speechlet_response(
             card_title, speech_output, reprompt_text, should_end_session))
@@ -205,14 +206,14 @@ def handle_question_response(intent):
 
 
 def make_guess():
-    global t2, state
+    global t2, state, reprompt_text
     logger.info("Making guess " + t2.guess)
     state = "guess"
     session_attributes = {}
     card_title = "Guessing"
     speech_output = "I give up, " + t2.get_guess()
     logger.info(speech_output)
-    reprompt_text = "Please answer YES or NO"
+    reprompt_text = "Please answer YES or NO, " + t2.get_guess()  # i want yes/no here
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session))
@@ -227,7 +228,7 @@ def handle_describe_response(intent):
 
 
 def described_thing(intent):
-    global state, new_desc
+    global state, new_desc, reprompt_text
     session_attributes = {}
     card_title = "Describe"
     new_desc = encode_description(intent)
@@ -262,7 +263,7 @@ def thing_description(intent):
 
 def handle_reveal_response(intent):
     """ I've asked the to tell me what they are."""
-    global t2, q, state, new_desc
+    global t2, q, state, new_desc, reprompt_text
     session_attributes = {}
     card_title = "Reveal"
     new_guess = encode_description(intent)
@@ -283,7 +284,7 @@ def handle_guess_response(intent):
     if intent['name'] == "AMAZON.YesIntent":
         return i_thought_so()
     if intent['name'] == "AMAZON.NoIntent":
-        return tell_me_more()
+        return tell_me_about()
     return yes_or_no_please()
 
 
@@ -292,11 +293,11 @@ def starting_over():
     pass
 
 
-def tell_me_more():
-    global state
+def tell_me_about():
+    global state, reprompt_text
     session_attributes = {}
     card_title = "Tell me more"
-    state = "more"
+    state = "about"
     speech_output = "To help me learn, please tell me something about yourself."
     reprompt_text = "Please tell me something about yourself."
     should_end_session = False
@@ -330,7 +331,6 @@ def say_help():
                     " When I have run out of questions, I will make a guess" \
                     " at what you are,  If I am wrong, I will ask you to tell" \
                     " me something about yourself, so I can learn"
-    reprompt_text = "Say READY to begin or CANCEL to end"
     should_end_session = False
 
     return build_response(session_attributes, build_speechlet_response(
@@ -338,7 +338,7 @@ def say_help():
 
 
 def i_thought_so():
-    global state
+    global state, reprompt_text
     session_attributes = {}
     card_title = "Got it!"
     speech_output = "I thought so!  Pretty smart don't you think? " \
@@ -354,7 +354,6 @@ def yes_or_no_please():
     session_attributes = {}
     card_title = "Yes or No"
     speech_output = "Please answer YES or NO"
-    reprompt_text = "Please answer YES or NO"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
         card_title, speech_output, reprompt_text, should_end_session))
@@ -362,7 +361,7 @@ def yes_or_no_please():
 
 def just_launched():
     """ Launched app without utterance """
-    global state
+    global state, reprompt_text
     state = "begin"
 
     session_attributes = {}
@@ -383,7 +382,8 @@ def session_ended():
     pass
 
 
-def build_speechlet_response(title, output, reprompt_text, should_end_session):
+def build_speechlet_response(title, output, passed_reprompt, should_end_session):
+    global reprompt_text
 
     return {
         'outputSpeech': {
