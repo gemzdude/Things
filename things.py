@@ -13,16 +13,6 @@ class Thing(object):
         self.things = {}
         self.guess = guess.upper()
 
-    def get_guess(self):
-        return Xform.guess_decode(self.guess)
-
-    #        return Xform.guess_decode(self.guess)
-
-    def add_thing(self, new_question, new_thing):
-        # new_key = Xform.encode(new_question.upper())
-        self.things[new_question] = new_thing
-        pass
-
     def get_nodes(self):
         return list(self.things)
 
@@ -31,12 +21,14 @@ class Xform:
     encodes = {
         "I'M ": "A01",
         "I AM ": "A01",
-        "I ": "B01"
+        "I ": "B01",
+        "MY ": "C01"
     }
 
     decodes = {
         "A01": "ARE YOU ",
-        "B01": "DO YOU "
+        "B01": "DO YOU ",
+        "C01": "M01 YOUR "
     }
 
     guess_decodes = {
@@ -50,14 +42,18 @@ class Xform:
         "I'M": "X01",
         "I AM": "X02",
         " I ": "X03",
-        " ME ": "X04"
+        " ME ": "X04",
+        " ARE ": "Y01",
+        " IS ": "Y02"
     }
 
     decodes_context = {
         "X01": "YOU'RE",
         "X02": "YOU ARE",
         "X03": " YOU ",
-        "X04": " YOU "
+        "X04": " YOU ",
+        "Y01": " ",
+        "Y02": " "
     }
 
     @staticmethod
@@ -70,18 +66,39 @@ class Xform:
     @staticmethod
     def encode(txt):
         encode_txt = Xform.xform(txt, Xform.encodes)
-        for eFrom, eTo in Xform.encodes_context.items():
-            encode_txt = encode_txt.replace(eFrom, eTo)
+        encode_txt = Xform.context_encode(encode_txt)
         encode_txt.replace(" ", "_")
         return encode_txt
 
     @staticmethod
     def decode(txt):
         decode_txt = Xform.xform(txt, Xform.decodes)
-        for dFrom, dTo in Xform.decodes_context.items():
-            decode_txt = decode_txt.replace(dFrom, dTo)
+        if re.match("M01 ", decode_txt):
+            if decode_txt.count("Y01"):
+                decode_txt = decode_txt.replace("M01 ", "ARE ")
+            if decode_txt.count("Y02"):
+                decode_txt = decode_txt.replace("M01 ", "IS ")
+        decode_txt = Xform.context_decode(decode_txt)
         decode_txt.replace("_", " ")
         return decode_txt
+
+    @staticmethod
+    def context_encode(txt):
+        encode_txt = txt
+        for eFrom, eTo in Xform.encodes_context.items():
+            encode_txt = encode_txt.replace(eFrom, eTo)
+        return encode_txt
+
+    @staticmethod
+    def context_decode(txt):
+        decode_txt = txt
+        for dFrom, dTo in Xform.decodes_context.items():
+            decode_txt = decode_txt.replace(dFrom, dTo)
+        return decode_txt
+
+    @staticmethod
+    def form_question(txt):
+        return Xform.decode(Xform.encode(txt))
 
     @staticmethod
     def guess_decode(txt):
@@ -95,11 +112,9 @@ class Xform:
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-t = Thing(Xform.encode("I'M THE BAR TENDER"))
-t2 = t
 state = "begin"
 new_desc = ""
-guess_list = t2.get_nodes()
+guess_list = ""
 end_pnt = len(guess_list)
 reprompt_text = "SAY READY TO BEGIN OR CANCEL TO END"
 table = ""
@@ -115,17 +130,8 @@ def main():
 
     create_table(db)
     root = get_root()
-    print("root: " + json.dumps(root))
 
     print("Table status:", table.table_status)
-
-    thing = root
-
-    desc = "I'M MADE OF PAPER"
-    guess = "ARE YOU A NAPKIN"
-    things = []
-    t1 = new_thing(root, desc, guess, things)
-    print("root: " + json.dumps(root))
 
     # desc = "I'M MADE OF PLASTIC"
     # guess = "ARE YOU AN ASHTRAY"
@@ -144,7 +150,7 @@ def main():
     print("==== Past dump ====")
 
     thing = root
-    new_node(thing)
+    start_node(thing)
     print("GUESS_LIST: " + str(guess_list))
     print("END_PNT: " + str(end_pnt))
     # print("GUESS[0]: " + guess_list[0])
@@ -152,7 +158,7 @@ def main():
     # print("GUESS[2]: " + guess_list[2])
     # while(True):
     #     try:
-    #         print(get_guess())
+    #         print(form_question())
     #     except IndexError:
     #         print("Out of guesses")
     #         break
@@ -204,20 +210,20 @@ def main():
     resp = speaking_to_me(intent)
     print(get_speech(resp))
 
-    # if intent['name'] == "DescribePersonIntent":   # I AM
-    # if intent['name'] == "DescribeThingIntent":    # I
-    # txt = "I AM " + intent['slots']['PersonDescription']['value'].upper()
-    # txt = "I " + intent['slots']['ThingDescription']['value'].upper()
+    # if intent['name'] == "I_am_Intent":   # I AM
+    # if intent['name'] == "I_Intent":    # I
+    # txt = "I AM " + intent['slots']['I_am_Description']['value'].upper()
+    # txt = "I " + intent['slots']['I_Description']['value'].upper()
 
     # build describe intent x2 for tell me more, tell me what
 
     # intent['name'] == "DescribePersonIntent"
-    intent = {'name': "DescribePersonIntent", 'slots': {'PersonDescription': {'value': "I AM RED"}}}
+    intent = {'name': "I_am_Intent", 'slots': {'I_am_Description': {'value': "I AM RED"}}}
     resp = speaking_to_me(intent)
     print(get_speech(resp))
 
     # intent['name'] == "DescribePersonIntent"
-    intent = {'name': "DescribePersonIntent", 'slots': {'PersonDescription': {'value': "ARE YOU A STRAW"}}}
+    intent = {'name': "I_am_Intent", 'slots': {'I_am_Description': {'value': "ARE YOU A STRAW"}}}
     resp = speaking_to_me(intent)
     print(get_speech(resp))
     print("# ===========================================")
@@ -267,10 +273,6 @@ def dump_table():
     global table
     try:
         response = table.scan()
-        #     KeyConditionExpression=Key('year').eq(1985)
-        # )
-        # print("ITEMS: " + str(response['Items']))
-
         for i in response['Items']:
             print("ID: " + i['id'], "  GUESS:", i['guess'] + "  THINGS: " + str(i['things']))
     except:
@@ -289,6 +291,7 @@ def lambda_handler(event, context):
 def speaking_to_me(intent):
     # these are handled the same no matter the state
     global state
+    print("INTENT_NAME: " + intent['name'])
     if intent['name'] == "AMAZON.CancelIntent" or intent['name'] == "AMAZON.StopIntent":
         return end_game()
     if intent['name'] == "AMAZON.HelpIntent":
@@ -308,13 +311,7 @@ def speaking_to_me(intent):
         return handle_guess_response(intent)
 
     # we are hopelessly lost, better just start over!
-    return starting_over()
-
-
-def new_node(existing_thing):
-    global guess_list, end_pnt
-    guess_list = existing_thing['things']
-    end_pnt = len(guess_list)
+    return start_game()
 
 
 def first_words(intent):
@@ -323,36 +320,34 @@ def first_words(intent):
     if intent['name'] == "ReadyIntent":
         state = "ask"
         thing = get_root()
+        start_node(thing)
         long_key = ""
-        new_node(thing)
         return next_question()
     session_attributes = {}
-    card_title = "Guessing"
     speech_output = "say ready to begin or cancel to end"
-    # reprompt_text = "Please answer YES or NO"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def next_question():
+    try:
+        guess_text = get_guess()
+        return ask_question("", guess_text)
+    except IndexError:
+        return make_guess()
+
+
+def ask_question(prolog_speech, question):
     global thing, state, reprompt_text
     state = "ask"
     session_attributes = {}
-    card_title = "Asking"
-    try:
-        guess_text = get_guess()
-        print("next_question trying to find next thing " + guess_text)
-        guess_text = Xform.encode(guess_text)
-        # print("encoded: " + guess_text)
-        speech_output = Xform.decode(guess_text)
-        # print("decoded: " + speech_output)
-        reprompt_text = "Please answer YES or NO, " + speech_output
-        should_end_session = False
-        return build_response(session_attributes, build_speechlet_response(
-            card_title, speech_output, reprompt_text, should_end_session))
-    except IndexError:
-        return make_guess()
+    print("next_question trying to find next thing " + question)
+    speech_output = prolog_speech + ", " + Xform.form_question(question)
+    reprompt_text = "Please answer YES or NO, " + speech_output
+    should_end_session = False
+    return build_response(session_attributes, build_speechlet_response(
+        speech_output, should_end_session))
 
 
 def get_guess():
@@ -372,8 +367,8 @@ def drill_down():
     global thing, key, long_key
     long_key = long_key + key
     print("DRILL_DOWN LONG_KEY: " + long_key)
-    thing = get_thing(key)
-    new_node(thing)
+    thing = get_thing(long_key)
+    start_node(thing)
 
 
 def handle_question_response(intent):
@@ -391,72 +386,51 @@ def make_guess():
     print("MAKE_GUESS GUESS: " + thing['guess'])
     state = "guess"
     session_attributes = {}
-    card_title = "Guessing"
-    # txt = Xform.encode(thing['guess'])
-    # txt = Xform.decode(txt)
-    txt = Xform.encode(thing['guess'])
-    txt = Xform.decode(txt)
-    speech_output = "I give up, " + txt
-    logger.info(speech_output)
+    # txt = Xform.form_question(thing['guess'])
+    txt = "ARE YOU " + thing['guess']
+    speech_output = "I'll take a guess, " + txt
     reprompt_text = "Please answer YES or NO, " + txt  # i want yes/no here
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def handle_describe_response(intent):
     """ I've asked them to tell me something about themselves."""
-    if intent['name'] == "DescribePersonIntent":   # I AM
-        return described_thing(intent)
-    if intent['name'] == "DescribeThingIntent":    # I
-        return described_thing(intent)
-
-
-def described_thing(intent):
     global state, new_desc, reprompt_text
     session_attributes = {}
-    card_title = "Describe"
-    new_desc = encode_description(intent)
+    new_desc = reform_utterance(intent)
+    if new_desc in thing['things']:
+        return ask_question("I think I've already asked you that", new_desc)
     print("ABOUT DESCRIPTION: " + new_desc)
     state = "what"
     speech_output = "OK, so tell me what you are"
     reprompt_text = "Please tell what you are"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
-def encode_description(intent):
-    if intent['name'] == "DescribePersonIntent":
-        return person_description(intent)
-    if intent['name'] == "DescribeThingIntent":
-        return thing_description(intent)
-    return "B01" + "unknown thing"
-
-
-def person_description(intent):
-    txt = "I AM " + intent['slots']['PersonDescription']['value'].upper() + " "
-    # txt = intent['slots']['PersonDescription']['value'].upper()
-    # txt = Xform.encode(txt)
-    return txt
-
-
-def thing_description(intent):
-    txt = "I " + intent['slots']['ThingDescription']['value'].upper() + " "
-    # txt = intent['slots']['ThingDescription']['value'].upper()
-    # txt = Xform.encode(txt)
-    return txt
+def reform_utterance(intent):
+    if intent['name'] == "I_am_Intent":
+        txt = "I AM " + intent['slots']['I_am_Description']['value'].upper() + " "
+        return txt
+    if intent['name'] == "I_Intent":
+        txt = "I " + intent['slots']['I_Description']['value'].upper() + " "
+        return txt
+    if intent['name'] == "My_Intent":
+        txt = "MY " + intent['slots']['My_Description']['value'].upper() + " "
+        return txt
+    return "I AM " + "AN UNKNOWN THING"
 
 
 def handle_reveal_response(intent):
     """ I've asked the to tell me what they are."""
     global thing, state, new_desc, reprompt_text
     session_attributes = {}
-    card_title = "Reveal"
-    new_guess = encode_description(intent)
+    # new_guess = reform_utterance(intent)
+    new_guess = intent['slots']['I_am_Description']['value'].upper() + " "
     print("REVEAL GUESS: " + new_guess)
-    # new_thing = Thing(new_guess)
-    # t2.things[new_desc] = new_thing
 
     thing = new_thing(thing, new_desc, new_guess, [])
 
@@ -466,7 +440,7 @@ def handle_reveal_response(intent):
     reprompt_text = "Say READY to begin or CANCEL to end"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def handle_guess_response(intent):
@@ -478,44 +452,33 @@ def handle_guess_response(intent):
     return yes_or_no_please()
 
 
-def starting_over():
-    """ Somehow we've lost track of the game state.  Bail out and start over."""
-    pass
-
-
 def tell_me_about():
     global state, reprompt_text
     session_attributes = {}
-    card_title = "Tell me more"
     state = "about"
     speech_output = "To help me learn, please tell me something about yourself."
     reprompt_text = "Please tell me something about yourself."
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def end_game():
     """ Ending game.  Say Good-bye"""
-    global t, t2, state, new_desc
-    card_title = "Good-bye!"
-    speech_output = "Thank you for playing Pivotal Things. " \
+    global state, new_desc
+    speech_output = "Thank you for playing Piedmont Things. " \
                     "Have a nice day! "
-    # t = Thing(Xform.encode("I'M THE BAR TENDER"))
-    # t2 = t
-    # q = 0
     state = "begin"
     new_desc = ""
     # Setting this to true ends the session and exits the skill.
     should_end_session = True
     return build_response({}, build_speechlet_response(
-        card_title, speech_output, None, should_end_session))
+        speech_output, should_end_session))
 
 
 def say_help():
     """ They've requested help.  Give it to them"""
     session_attributes = {}
-    card_title = "Help"
     speech_output = "I will try to guess what you are by asking" \
                     " you a series of yes or no questions." \
                     " When I have run out of questions, I will make a guess" \
@@ -524,47 +487,45 @@ def say_help():
     should_end_session = False
 
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def i_thought_so():
     global state, reprompt_text
     session_attributes = {}
-    card_title = "Got it!"
     speech_output = "I thought so!  Pretty smart don't you think? " \
                     "Say READY to play again"
     reprompt_text = "Say READY to play again or CANCEL to end"
     state = "begin"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def yes_or_no_please():
     session_attributes = {}
-    card_title = "Yes or No"
     speech_output = "Please answer YES or NO"
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def just_launched():
     """ Launched app without utterance """
-    global state, reprompt_text, table, thing
-    state = "begin"
-
+    global table
     db = boto3.resource('dynamodb')
     table = db.Table('things')
-    root = get_root()
-    thing = root
     logger.info("db: " + str(db))
     logger.info("Table status:" + str(table.table_status))
-    logger.info(str(root))
+    return start_game()
 
+
+def start_game():
+    global state, reprompt_text, table, thing
+    state = "begin"
+    thing = get_root()
     session_attributes = {}
-    card_title = "Welcome"
-    speech_output = "Welcome to the Pivotal Things Alexa application. " \
+    speech_output = "Welcome to the Piedmont Things Alexa application. " \
                     "Think of yourself as a thing, " \
                     "and I will try to guess WHAT you are. " \
                     "When you are ready to begin, say READY"
@@ -573,14 +534,20 @@ def just_launched():
     should_end_session = False
 
     return build_response(session_attributes, build_speechlet_response(
-        card_title, speech_output, reprompt_text, should_end_session))
+        speech_output, should_end_session))
 
 
 def session_ended():
     pass
 
 
-def build_speechlet_response(title, output, passed_reprompt, should_end_session):
+def start_node(existing_thing):
+    global guess_list, end_pnt
+    guess_list = existing_thing['things']
+    end_pnt = len(guess_list)
+
+
+def build_speechlet_response(output, should_end_session):
     global reprompt_text
 
     return {
@@ -652,7 +619,7 @@ def create_root():
         response = table.put_item(
             Item={
                 'id': "ROOT",
-                'guess': "I AM THE BAR TENDER",
+                'guess': "THE BAR TENDER",
                 'things': []
             }
         )
@@ -683,10 +650,10 @@ def get_root():
 def new_thing(existing_thing, desc, guess, things):
     global long_key
     long_key = long_key + desc
-    new_thing = create_thing(long_key, guess, things)
+    created_thing = create_thing(long_key, guess, things)
     existing_thing["things"].append(desc)
     update_thing(existing_thing)
-    return new_thing
+    return created_thing
 
 
 def update_thing(existing_thing):
@@ -694,19 +661,19 @@ def update_thing(existing_thing):
     print("UPDATE_THING LONG_KEY: " + existing_thing['id'] + " GUESS: " + existing_thing['guess'] + " THINGS: " + str(existing_thing['things']))
     response = table.update_item(
         Key={
-            'id': existing_thing["id"]
+            'id': existing_thing['id']
         },
         UpdateExpression="set guess=:g, things=:t",
         ExpressionAttributeValues={
-            ':g': existing_thing["guess"],
-            ':t': existing_thing["things"]
+            ':g': existing_thing['guess'],
+            ':t': existing_thing['things']
         },
         ReturnValues="UPDATED_NEW"
     )
 
     response = table.get_item(
         Key={
-            'id': existing_thing["id"]
+            'id': existing_thing['id']
         }
     )
     item = response['Item']
@@ -732,12 +699,12 @@ def create_thing(id, guess, things):
     return item
 
 
-def get_thing(desc):
-    global table, long_key
-    print("GET_THING LONG_KEY: " + long_key)
+def get_thing(id):
+    global table
+    print("GET_THING ID: " + id)
     response = table.get_item(
         Key={
-            'id': long_key
+            'id': id
         }
     )
     item = response['Item']
