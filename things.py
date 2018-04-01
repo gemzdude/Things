@@ -1,6 +1,13 @@
 import re
 import sys
 import json
+import urllib.request
+from pprint import pprint
+import datetime
+import os
+import pytz
+from pytz import timezone
+from pprint import pprint, pformat
 import boto3
 import logging
 from random import randint
@@ -29,13 +36,6 @@ class Xform:
         "A01": "ARE YOU ",
         "B01": "DO YOU ",
         "C01": "M01 YOUR "
-    }
-
-    guess_decodes = {
-        # "A01": "THAT YOU ARE ",
-        # "B01": "THAT YOU ARE "
-        "A01": "ARE YOU ",
-        "B01": "ARE YOU "
     }
 
     encodes_context = {
@@ -100,23 +100,20 @@ class Xform:
     def form_question(txt):
         return Xform.decode(Xform.encode(txt))
 
-    @staticmethod
-    def guess_decode(txt):
-        decode_txt = Xform.xform(txt, Xform.guess_decodes)
-        for dFrom, dTo in Xform.decodes_context.items():
-            decode_txt = decode_txt.replace(dFrom, dTo)
-        decode_txt.replace("_", " ")
-        return decode_txt
-
-
+logLevel = logging.CRITICAL
+myLevel = logging.CRITICAL  # set to INFO to just see my stuff
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logLevel)
+sj = logging.StreamHandler(sys.stdout)
+sj.setLevel(myLevel)
+logger.addHandler(sj)
 
 state = "begin"
 new_desc = ""
 guess_list = ""
 end_pnt = len(guess_list)
 reprompt_text = "SAY READY TO BEGIN OR CANCEL TO END"
+db = ""
 table = ""
 key = ""
 long_key = ""
@@ -124,159 +121,161 @@ thing = ""  # dyno version of t2
 
 
 def main():
-    global table, thing
+    global db, table, thing
     db = boto3.resource('dynamodb', endpoint_url="http://localhost:8000")
-    print("db: " + str(db))
+    logger.info("db: " + str(db))
 
-    create_table(db)
+    create_table()
     root = get_root()
 
-    print("Table status:", table.table_status)
+    logger.info("Table status:" + table.table_status)
 
     # desc = "I'M MADE OF PLASTIC"
     # guess = "ARE YOU AN ASHTRAY"
     # things = []
     # t2 = new_thing(root, desc, guess, things)
-    # print("root: " + json.dumps(root))
+    # logger.info("root: " + json.dumps(root))
     #
     # desc = "I'M KNOWN AS THE BEER WHISPERER"
     # guess = "ARE YOU KEVIN"
     # things = []
     # t3 = new_thing(root, desc, guess, things)
-    # print("root: " + json.dumps(root))
+    # logger.info("root: " + json.dumps(root))
 
-    print("==== Before dump ====")
-    dump_table()
-    print("==== Past dump ====")
+    # logger.info("==== Before dump ====")
+    # dump_table()
+    # logger.info("==== Past dump ====")
+    #
+    # thing = root
+    # start_node(thing)
+    # logger.info("GUESS_LIST: " + str(guess_list))
+    # logger.info("END_PNT: " + str(end_pnt))
 
-    thing = root
-    start_node(thing)
-    print("GUESS_LIST: " + str(guess_list))
-    print("END_PNT: " + str(end_pnt))
-    # print("GUESS[0]: " + guess_list[0])
-    # print("GUESS[1]: " + guess_list[1])
-    # print("GUESS[2]: " + guess_list[2])
+    # logger.info("GUESS[0]: " + guess_list[0])
+    # logger.info("GUESS[1]: " + guess_list[1])
+    # logger.info("GUESS[2]: " + guess_list[2])
     # while(True):
     #     try:
-    #         print(form_question())
+    #         logger.info(form_question())
     #     except IndexError:
-    #         print("Out of guesses")
+    #         logger.info("Out of guesses")
     #         break
 # ===========================================
-    intent = {'name': "ReadyIntent"}
-    resp = speaking_to_me(intent)
+    intent = {'name': "Larry_Intent"}
+    resp = handle_larrybus()
     print(get_speech(resp))
-
-    intent['name'] = 'AMAZON.YesIntent'
-    # resp = handle_question_response(intent)
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    intent['name'] = 'AMAZON.YesIntent'
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-    print("# ===========================================")
+#
+#     intent['name'] = 'AMAZON.YesIntent'
+#     # resp = handle_question_response(intent)
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     intent['name'] = 'AMAZON.YesIntent'
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#     logger.info("# ===========================================")
 #     intent = {'name': "ReadyIntent"}
 #     # resp = first_words(intent)
 #     resp = speaking_to_me(intent)
-#     print(get_speech(resp))
+#     logger.info(get_speech(resp))
 #
 #     intent['name'] = 'AMAZON.NoIntent'
 #     resp = speaking_to_me(intent)
-#     print(get_speech(resp))
+#     logger.info(get_speech(resp))
 #
 #     intent['name'] = 'AMAZON.NoIntent'
 #     resp = speaking_to_me(intent)
-#     print(get_speech(resp))
+#     logger.info(get_speech(resp))
 #
 #     intent['name'] = 'AMAZON.YesIntent'
 #     resp = speaking_to_me(intent)
-#     print(get_speech(resp))
+#     logger.info(get_speech(resp))
 #
 #     intent['name'] = 'AMAZON.YesIntent'
 #     resp = speaking_to_me(intent)
-#     print(get_speech(resp))
+#     logger.info(get_speech(resp))
 # =============================================
-    intent = {'name': "ReadyIntent"}
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    intent['name'] = 'AMAZON.YesIntent'
-    # resp = handle_question_response(intent)
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    intent['name'] = 'AMAZON.NoIntent'
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    # if intent['name'] == "I_am_Intent":   # I AM
-    # if intent['name'] == "I_Intent":    # I
-    # txt = "I AM " + intent['slots']['I_am_Description']['value'].upper()
-    # txt = "I " + intent['slots']['I_Description']['value'].upper()
-
-    # build describe intent x2 for tell me more, tell me what
-
-    # intent['name'] == "DescribePersonIntent"
-    intent = {'name': "I_am_Intent", 'slots': {'I_am_Description': {'value': "I AM RED"}}}
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    # intent['name'] == "DescribePersonIntent"
-    intent = {'name': "I_am_Intent", 'slots': {'I_am_Description': {'value': "ARE YOU A STRAW"}}}
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-    print("# ===========================================")
-
-    intent = {'name': "ReadyIntent"}
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    intent['name'] = 'AMAZON.YesIntent'
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    intent['name'] = 'AMAZON.YesIntent'
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
-
-    intent['name'] = 'AMAZON.NoIntent'
-    resp = speaking_to_me(intent)
-    print(get_speech(resp))
+#     intent = {'name': "ReadyIntent"}
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     intent['name'] = 'AMAZON.YesIntent'
+#     # resp = handle_question_response(intent)
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     intent['name'] = 'AMAZON.NoIntent'
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     # if intent['name'] == "I_am_Intent":   # I AM
+#     # if intent['name'] == "I_Intent":    # I
+#     # txt = "I AM " + intent['slots']['I_am_Description']['value'].upper()
+#     # txt = "I " + intent['slots']['I_Description']['value'].upper()
+#
+#     # build describe intent x2 for tell me more, tell me what
+#
+#     # intent['name'] == "DescribePersonIntent"
+#     intent = {'name': "I_am_Intent", 'slots': {'I_am_Description': {'value': "I AM RED"}}}
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     # intent['name'] == "DescribePersonIntent"
+#     intent = {'name': "I_am_Intent", 'slots': {'I_am_Description': {'value': "ARE YOU A STRAW"}}}
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#     logger.info("# ===========================================")
+#
+#     intent = {'name': "ReadyIntent"}
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     intent['name'] = 'AMAZON.YesIntent'
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     intent['name'] = 'AMAZON.YesIntent'
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
+#
+#     intent['name'] = 'AMAZON.NoIntent'
+#     resp = speaking_to_me(intent)
+#     logger.info(get_speech(resp))
     # intent['name'] = 'AMAZON.YesIntent'
     # resp = speaking_to_me(intent)
-    # print(get_speech(resp))
+    # logger.info(get_speech(resp))
     #
     # intent['name'] = 'AMAZON.NoIntent'
     # resp = speaking_to_me(intent)
-    # print(get_speech(resp))
+    # logger.info(get_speech(resp))
 
     # intent['name'] = 'AMAZON.YesIntent'
     # resp = speaking_to_me(intent)
-    # print(get_speech(resp))
+    # logger.info(get_speech(resp))
 # ===========================================
-    print("==== Before dump ====")
-    dump_table()
-    print("==== Past dump ====")
+#     logger.info("==== Before dump ====")
+#     dump_table()
+#     logger.info("==== Past dump ====")
     # except:
-    #     print(sys.exc_info())
-    #     print(sys.exc_info()[0])
-    #     print(sys.exc_info()[1])
-    #     print(sys.exc_info()[2])
+    #     logger.info(sys.exc_info())
+    #     logger.info(sys.exc_info()[0])
+    #     logger.info(sys.exc_info()[1])
+    #     logger.info(sys.exc_info()[2])
 
 
 def get_speech(resp):
-    return "SPEECH IS: " + resp['response']['outputSpeech']['text']
+    return "SPEECH IS: " + resp['response']['outputSpeech']['ssml']
 
 
 def dump_table():
     global table
     try:
         response = table.scan()
-        for i in response['Items']:
-            print("ID: " + i['id'], "  GUESS:", i['guess'] + "  THINGS: " + str(i['things']))
+        logger.info(pformat(response))
+        # for i in response['Items']:
+        #     logger.info("ID: " + i['id'], "  GUESS:", i['guess'] + "  THINGS: " + str(i['things']))
     except:
-        print("DUMP ERROR: " + sys.exc_info()[0])
+        logger.info("DUMP ERROR: " + sys.exc_info()[0])
 
 
 def lambda_handler(event, context):
@@ -291,11 +290,13 @@ def lambda_handler(event, context):
 def speaking_to_me(intent):
     # these are handled the same no matter the state
     global state
-    print("INTENT_NAME: " + intent['name'])
+    logger.info("INTENT_NAME: " + intent['name'])
     if intent['name'] == "AMAZON.CancelIntent" or intent['name'] == "AMAZON.StopIntent":
         return end_game()
     if intent['name'] == "AMAZON.HelpIntent":
         return say_help()
+    if intent['name'] == "Larry_Intent":
+        return handle_larrybus()
 
     # handle what was said depending on where we are in the game
     logger.info("entering with state: " + state)
@@ -316,9 +317,13 @@ def speaking_to_me(intent):
 
 def first_words(intent):
     """ Initial utterance handled here.  Only READY valid here."""
-    global state, thing, guess_list, end_pnt, reprompt_text, long_key
+    global state, db, thing, guess_list, end_pnt, reprompt_text, long_key
+    logger.info(pformat(intent))
     if intent['name'] == "ReadyIntent":
         state = "ask"
+        if db == "":
+            db = boto3.resource('dynamodb')
+            table = db.Table('things')
         thing = get_root()
         start_node(thing)
         long_key = ""
@@ -342,7 +347,7 @@ def ask_question(prolog_speech, question):
     global thing, state, reprompt_text
     state = "ask"
     session_attributes = {}
-    print("next_question trying to find next thing " + question)
+    logger.info("next_question trying to find next thing " + question)
     speech_output = prolog_speech + ", " + Xform.form_question(question)
     reprompt_text = "Please answer YES or NO, " + speech_output
     should_end_session = False
@@ -355,8 +360,8 @@ def get_guess():
     end_pnt = end_pnt - 1
     if end_pnt < 0:
         raise IndexError('No more guesses')
-    print("GET_GUESS GUESS_LIST: " + str(guess_list))
-    print("GET_GUESS END_PNT: " + str(end_pnt))
+    logger.info("GET_GUESS GUESS_LIST: " + str(guess_list))
+    logger.info("GET_GUESS END_PNT: " + str(end_pnt))
     q = randint(0, end_pnt)
     key = guess_list[q]  # should be random out of guess_list between 0 and end_pnt
     guess_list[q] = guess_list[end_pnt]
@@ -366,7 +371,7 @@ def get_guess():
 def drill_down():
     global thing, key, long_key
     long_key = long_key + key
-    print("DRILL_DOWN LONG_KEY: " + long_key)
+    logger.info("DRILL_DOWN LONG_KEY: " + long_key)
     thing = get_thing(long_key)
     start_node(thing)
 
@@ -383,12 +388,12 @@ def handle_question_response(intent):
 
 def make_guess():
     global thing, state, reprompt_text
-    print("MAKE_GUESS GUESS: " + thing['guess'])
+    logger.info("MAKE_GUESS GUESS: " + thing['guess'])
     state = "guess"
     session_attributes = {}
     # txt = Xform.form_question(thing['guess'])
     txt = "ARE YOU " + thing['guess']
-    speech_output = "I'll take a guess, " + txt
+    speech_output = "I'll take a guess, " + txt + "?"
     reprompt_text = "Please answer YES or NO, " + txt  # i want yes/no here
     should_end_session = False
     return build_response(session_attributes, build_speechlet_response(
@@ -402,7 +407,7 @@ def handle_describe_response(intent):
     new_desc = reform_utterance(intent)
     if new_desc in thing['things']:
         return ask_question("I think I've already asked you that", new_desc)
-    print("ABOUT DESCRIPTION: " + new_desc)
+    logger.info("ABOUT DESCRIPTION: " + new_desc)
     state = "what"
     speech_output = "OK, so tell me what you are"
     reprompt_text = "Please tell what you are"
@@ -421,6 +426,8 @@ def reform_utterance(intent):
     if intent['name'] == "My_Intent":
         txt = "MY " + intent['slots']['My_Description']['value'].upper() + " "
         return txt
+    logger.info("UNKNOWN INTENT!")
+    logger.info(pformat(intent))
     return "I AM " + "AN UNKNOWN THING"
 
 
@@ -430,7 +437,7 @@ def handle_reveal_response(intent):
     session_attributes = {}
     # new_guess = reform_utterance(intent)
     new_guess = intent['slots']['I_am_Description']['value'].upper() + " "
-    print("REVEAL GUESS: " + new_guess)
+    logger.info("REVEAL GUESS: " + new_guess)
 
     thing = new_thing(thing, new_desc, new_guess, [])
 
@@ -512,7 +519,7 @@ def yes_or_no_please():
 
 def just_launched():
     """ Launched app without utterance """
-    global table
+    global db, table
     db = boto3.resource('dynamodb')
     table = db.Table('things')
     logger.info("db: " + str(db))
@@ -527,7 +534,7 @@ def start_game():
     session_attributes = {}
     speech_output = "Welcome to the Piedmont Things Alexa application. " \
                     "Think of yourself as a thing, " \
-                    "and I will try to guess WHAT you are. " \
+                    "and I will try to guess what you are. " \
                     "When you are ready to begin, say READY"
     # speech_output = "Hello, say READY to begin"
     reprompt_text = "Say READY to begin or CANCEL to end"
@@ -551,10 +558,14 @@ def build_speechlet_response(output, should_end_session):
     global reprompt_text
 
     return {
-        'outputSpeech': {
-            'type': 'PlainText',
-            'text': output
+        "outputSpeech": {
+            "type": "SSML",
+            "ssml": "<speak>" + output + "</speak>"
         },
+        # 'outputSpeech': {
+        #     'type': 'PlainText',
+        #     'text': output
+        # },
         # 'card': {
         #     'type': 'Simple',
         #     'title': 'SessionSpeechlet - ' + title,
@@ -562,8 +573,8 @@ def build_speechlet_response(output, should_end_session):
         # },
         'reprompt': {
             'outputSpeech': {
-                'type': 'PlainText',
-                'text': reprompt_text
+                'type': 'SSML',
+                'ssml': "<speak>" + reprompt_text + "</speak>"
             }
         },
         'shouldEndSession': should_end_session
@@ -580,8 +591,8 @@ def build_response(session_attributes, speechlet_response):
     return response
 
 
-def create_table(db):
-    global table
+def create_table():
+    global db, table
     try:
         table = db.Table('things')
         table.delete()
@@ -612,8 +623,8 @@ def create_table(db):
 
 
 def create_root():
-    global table
-    db = boto3.resource('dynamodb')
+    global db, table
+    # db = boto3.resource('dynamodb')
     table = db.Table('things')
     try:
         response = table.put_item(
@@ -632,7 +643,7 @@ def create_root():
 
 def get_root():
     global table
-    db = boto3.resource('dynamodb')
+    # db = boto3.resource('dynamodb')
     table = db.Table('things')
     try:
         response = table.get_item(
@@ -658,7 +669,7 @@ def new_thing(existing_thing, desc, guess, things):
 
 def update_thing(existing_thing):
     global table
-    print("UPDATE_THING LONG_KEY: " + existing_thing['id'] + " GUESS: " + existing_thing['guess'] + " THINGS: " + str(existing_thing['things']))
+    logger.info("UPDATE_THING LONG_KEY: " + existing_thing['id'] + " GUESS: " + existing_thing['guess'] + " THINGS: " + str(existing_thing['things']))
     response = table.update_item(
         Key={
             'id': existing_thing['id']
@@ -682,7 +693,7 @@ def update_thing(existing_thing):
 
 def create_thing(id, guess, things):
     global table, long_key
-    print("CREATE_THING LONG_KEY: " + long_key + " GUESS: " + guess + " THINGS: " + str(things))
+    logger.info("CREATE_THING LONG_KEY: " + long_key + " GUESS: " + guess + " THINGS: " + str(things))
     response = table.put_item(
         Item={
             'id': long_key,
@@ -701,7 +712,7 @@ def create_thing(id, guess, things):
 
 def get_thing(id):
     global table
-    print("GET_THING ID: " + id)
+    logger.info("GET_THING ID: " + id)
     response = table.get_item(
         Key={
             'id': id
@@ -709,6 +720,91 @@ def get_thing(id):
     )
     item = response['Item']
     return item
+
+
+def handle_larrybus():
+
+    trimet = os.environ.get('TRIMET_APIKEY')
+    trimet_url = "http://developer.trimet.org/ws/V2/arrivals"
+    trimet_parms = "?json=true&appid=" + trimet + "&locIDs=93"
+    session_attributes = {}
+    should_end_session = False
+    try:
+        x = urllib.request.urlopen(trimet_url + trimet_parms)
+        arr_info = json.loads(x.read())
+
+        arr_list = arr_info["resultSet"]["arrival"]
+
+        est, est_min, est_time, est_late, sch, sch_min, sch_time, sch_late = arrival_info(arr_list[0])
+        if est is None:
+            if sch is None:
+                speech_output = "The buses are not running any more. "
+            else:
+                speech_output = "I don't have an estimate for the next bus, \
+but it is scheduled to arrive in {0} minutes at ".format(sch_min) + sch_time + ". "
+        else:
+            if est_late:
+                speech_output = "The bus should have been here {0} minutes ago at ".format(est_min) + est_time + ". "
+            else:
+                speech_output = "The next bus is due to arrive in {0} minutes at ".format(est_min) + est_time + ". "
+
+        # print(arr_list[1])
+
+        est, est_min, est_time, est_late, sch, sch_min, sch_time, sch_late = arrival_info(arr_list[1])
+        if est is None:
+            if sch is None:
+                speech_output = speech_output + " I don't have any information for buses after that. "
+            else:
+                speech_output = speech_output + " I don't have an estimate for the bus after that, \
+but it is scheduled to arrive in {0} minutes at ".format(sch_min) + sch_time + ". "
+        else:
+            speech_output = speech_output + "  The bus after that is due to arrive in {0} minutes at ".format(est_min) + est_time + ". "
+
+        return build_response(session_attributes, build_speechlet_response(
+            speech_output, should_end_session))
+    except:
+        logger.info("LARRY ERROR: " + sys.exc_info()[0])
+        speech_output = "An error occurred attempting to contact Trimet."
+        return build_response(session_attributes, build_speechlet_response(
+            speech_output, should_end_session))
+
+
+def arrival_info(arrival):
+
+    try:
+        est, est_min, est_time, est_late = time_info(arrival['estimated'])
+    except KeyError:
+        est = None
+        est_min = None
+        est_time = None
+        est_late = None
+
+    try:
+        sch, sch_min, sch_time, sch_late = time_info(arrival['scheduled'])
+    except KeyError:
+        sch = None
+        sch_min = None
+        sch_time = None
+        sch_late = None
+
+    return est, est_min, est_time, est_late, sch, sch_min, sch_time, sch_late
+
+
+def time_info(ticks):
+    cur = datetime.datetime.now().astimezone(timezone('US/Pacific'))
+    tim = datetime.datetime.fromtimestamp(ticks / 1000.0).astimezone(timezone('US/Pacific'))
+    if tim > cur:
+        tim_late = False
+        diff = tim - cur
+    else:
+        tim_late = True
+        diff = cur - tim
+    tim_min, seconds = divmod(diff.seconds, 60)
+    tim_hh = "{0:d}".format(int(tim.strftime("%I")))
+    tim_mm = str(tim.strftime("%M"))
+    tim_ampm = str(tim.strftime("%P"))
+    tim_say = tim_hh + " " + tim_mm + " " + tim_ampm
+    return tim, tim_min, tim_say, tim_late
 
 
 if __name__ == "__main__":

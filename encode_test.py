@@ -11,7 +11,8 @@ class Xform:
 
     decodes = {
         "A01": "ARE YOU ",
-        "B01": "DO YOU "
+        "B01": "DO YOU ",
+        "C01": "M01 YOUR "
     }
 
     guess_decodes = {
@@ -25,14 +26,18 @@ class Xform:
         "I'M": "X01",
         "I AM": "X02",
         " I ": "X03",
-        " ME ": "X04"
+        " ME ": "X04",
+        " ARE ": "Y01",
+        " IS ": "Y02"
     }
 
     decodes_context = {
         "X01": "YOU'RE",
         "X02": "YOU ARE",
         "X03": " YOU ",
-        "X04": " YOU "
+        "X04": " YOU ",
+        "Y01": " ",
+        "Y02": " "
     }
 
     @staticmethod
@@ -45,18 +50,39 @@ class Xform:
     @staticmethod
     def encode(txt):
         encode_txt = Xform.xform(txt, Xform.encodes)
-        for eFrom, eTo in Xform.encodes_context.items():
-            encode_txt = encode_txt.replace(eFrom, eTo)
+        encode_txt = Xform.context_encode(encode_txt)
         encode_txt.replace(" ", "_")
         return encode_txt
 
     @staticmethod
     def decode(txt):
         decode_txt = Xform.xform(txt, Xform.decodes)
-        for dFrom, dTo in Xform.decodes_context.items():
-            decode_txt = decode_txt.replace(dFrom, dTo)
+        if re.match("M01 ", decode_txt):
+            if decode_txt.count("Y01"):
+                decode_txt = decode_txt.replace("M01 ", "ARE ")
+            if decode_txt.count("Y02"):
+                decode_txt = decode_txt.replace("M01 ", "IS ")
+        decode_txt = Xform.context_decode(decode_txt)
         decode_txt.replace("_", " ")
         return decode_txt
+
+    @staticmethod
+    def context_encode(txt):
+        encode_txt = txt
+        for eFrom, eTo in Xform.encodes_context.items():
+            encode_txt = encode_txt.replace(eFrom, eTo)
+        return encode_txt
+
+    @staticmethod
+    def context_decode(txt):
+        decode_txt = txt
+        for dFrom, dTo in Xform.decodes_context.items():
+            decode_txt = decode_txt.replace(dFrom, dTo)
+        return decode_txt
+
+    @staticmethod
+    def form_question(txt):
+        return Xform.decode(Xform.encode(txt))
 
     @staticmethod
     def guess_decode(txt):
